@@ -12,17 +12,16 @@ const app = express();
 // Use CORS for enabling cross-origin requests
 app.use(cors());
 
-// Directory to store images (in serverless environment, it should be ephemeral)
 const IMAGE_DIR = path.join(__dirname, "../public/static");
 if (!fs.existsSync(IMAGE_DIR)) {
   fs.mkdirSync(IMAGE_DIR, { recursive: true });
 }
 
-const saveBase64Image = (base64Data, filename) => {
+const saveBase64Image = async (base64Data, filename) => {
   const imageData = Buffer.from(base64Data, "base64");
   const filepath = path.join(IMAGE_DIR, filename);
-  fs.writeFileSync(filepath, imageData);
-  return filename; // Return only the filename
+  await fs.promises.writeFile(filepath, imageData);
+  return filename;
 };
 
 // Serve static files
@@ -31,16 +30,17 @@ app.use("/static", express.static(IMAGE_DIR));
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 app.get("/api/v1/notices", async (req, res) => {
+  console.log("Request received");
   const url = "https://bisag-n.gov.in/";
 
   try {
     const response = await axios.get(url, { httpsAgent });
     const html = response.data;
-
     const $ = cheerio.load(html);
 
     const section = $("#noticeboard");
     if (!section.length) {
+      console.error(`Section with id 'noticeboard' not found`);
       return res
         .status(404)
         .json({ error: "Section with id 'noticeboard' not found" });
@@ -48,6 +48,7 @@ app.get("/api/v1/notices", async (req, res) => {
 
     const table = section.find("table");
     if (!table.length) {
+      console.error(`Table within the section 'noticeboard' not found`);
       return res
         .status(404)
         .json({ error: "Table within the section 'noticeboard' not found" });
@@ -56,11 +57,11 @@ app.get("/api/v1/notices", async (req, res) => {
     const rows = table.find("tr").slice(1);
     const notices = [];
 
-    rows.each((idx, row) => {
+    for (const row of rows) {
       const columns = $(row).find("td");
       if (columns.length < 4) {
         console.warn("Row with insufficient columns found");
-        return;
+        continue;
       }
 
       try {
@@ -80,8 +81,8 @@ app.get("/api/v1/notices", async (req, res) => {
             .update(base64Image)
             .digest("hex");
           const filename = `${hashDigest}.jpg`;
-          saveBase64Image(base64Image, filename);
-          imageUrl = `/static/${filename}`; // Ensure correct path
+          await saveBase64Image(base64Image, filename);
+          imageUrl = `/static/${filename}`;
         } else if (!subjectAnchor.length) {
           imageUrl = null;
         }
@@ -101,8 +102,9 @@ app.get("/api/v1/notices", async (req, res) => {
       } catch (error) {
         console.error("Error processing row:", error);
       }
-    });
+    }
 
+    console.log("Response successfully generated");
     return res.json(notices);
   } catch (error) {
     console.error("Request failed:", error);
