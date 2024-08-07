@@ -8,22 +8,21 @@ const https = require("https");
 const cors = require("cors");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Use CORS
+// Use CORS for enabling cross-origin requests
 app.use(cors());
 
-// Directory to store images
-const IMAGE_DIR = path.join(__dirname, "static");
+// Directory to store images (in serverless environment, it should be ephemeral)
+const IMAGE_DIR = path.join(__dirname, "../public/static");
 if (!fs.existsSync(IMAGE_DIR)) {
-  fs.mkdirSync(IMAGE_DIR);
+  fs.mkdirSync(IMAGE_DIR, { recursive: true });
 }
 
 const saveBase64Image = (base64Data, filename) => {
   const imageData = Buffer.from(base64Data, "base64");
   const filepath = path.join(IMAGE_DIR, filename);
   fs.writeFileSync(filepath, imageData);
-  return filepath;
+  return filename; // Return only the filename
 };
 
 // Serve static files
@@ -66,7 +65,7 @@ app.get("/api/v1/notices", async (req, res) => {
 
       try {
         const publishDate = $(columns[0]).text().trim();
-        const subjectElement = $(columns[1]); // Element that contains the subject
+        const subjectElement = $(columns[1]);
         const subjectAnchor = subjectElement.find("a");
         const subjectText = subjectAnchor.length
           ? subjectAnchor.text().trim()
@@ -82,7 +81,7 @@ app.get("/api/v1/notices", async (req, res) => {
             .digest("hex");
           const filename = `${hashDigest}.jpg`;
           saveBase64Image(base64Image, filename);
-          imageUrl = `/static/${filename}`;
+          imageUrl = `/static/${filename}`; // Ensure correct path
         } else if (!subjectAnchor.length) {
           imageUrl = null;
         }
@@ -111,6 +110,4 @@ app.get("/api/v1/notices", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+module.exports = app;
